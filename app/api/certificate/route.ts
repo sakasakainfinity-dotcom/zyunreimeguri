@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseRouteHandlerClient, createSupabaseServiceRoleClient } from '@/lib/supabase-server';
 
+export const runtime = 'nodejs'; // ← Edgeじゃ動かん、Nodeで動かす
 export const runtime = 'nodejs';
 
 const schema = z.object({
