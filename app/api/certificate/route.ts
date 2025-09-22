@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseRouteHandlerClient, createSupabaseServiceRoleClient } from '@/lib/supabase-server';
 
-export const runtime = 'nodejs'; // ← Edgeじゃ動かん、Nodeで動かす
 export const runtime = 'nodejs';
 
 const schema = z.object({
@@ -13,7 +12,11 @@ async function generateCertificateImage(options: {
   missionTitle: string;
   userLabel: string;
 }): Promise<Buffer> {
-  const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas');
+// ← ここが超重要。webpackIgnore を必ず付ける
+const { createCanvas, GlobalFonts } = await import(
+  /* webpackIgnore: true */ '@napi-rs/canvas'
+);
+
   if (GlobalFonts.get('Noto Sans JP') === undefined) {
     try {
       GlobalFonts.registerFromPath('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans JP');
