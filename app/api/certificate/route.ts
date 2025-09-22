@@ -87,18 +87,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // ミッション取得（title 使用）
-    const { data: mission, error: missionError } = await supabase
-      .from('missions')
-      .select('id, title')
-      .eq('id', missionId)
-      .single();
+  // ★ 追加：型を上に書く
+type MissionRow = { id: string; title: string };
 
-    if (missionError || !mission) {
-      return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
-    }
+const { data: mission, error: missionError } = await supabase
+  .from('missions')
+  .select('id, title')
+  .eq('id', missionId)
+  .single<MissionRow>();
 
-    // 証明書画像生成
+if (missionError || !mission) {
+  return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
+}
+
+const userLabel = `巡礼者: ${user.email ?? user.id}`;
+const pngBuffer = await generateCertificateImage({
+  missionTitle: mission.title,
+  userLabel,
+});
+
     const userLabel = `巡礼者: ${user.email ?? user.id}`;
     const pngBytes = await generateCertificateImage({
       missionTitle: mission.title,
