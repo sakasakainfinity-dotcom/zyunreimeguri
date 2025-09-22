@@ -35,11 +35,12 @@ export default function PlaceDetailPage({ params }: PlaceDetailProps) {
             .from('places')
             .select('id, name, latitude, longitude, prefecture, address')
             .eq('id', id)
-            .maybeSingle(),
+            .maybeSingle<Place>(),
           supabase
             .from('mission_places')
             .select('mission:missions(id, slug, title, color)')
             .eq('place_id', id)
+            .returns<{ mission: Mission | null }[]>()
         ]);
 
         if (placeError || !placeRow) {
@@ -55,7 +56,7 @@ export default function PlaceDetailPage({ params }: PlaceDetailProps) {
           .filter((mission): mission is Mission => Boolean(mission));
 
         if (mounted) {
-          setPlace(placeRow as Place);
+          setPlace(placeRow);
           setMissions(missionsList);
         }
 

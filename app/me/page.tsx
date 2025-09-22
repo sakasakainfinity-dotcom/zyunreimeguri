@@ -46,19 +46,23 @@ export default function MePage() {
           setUserEmail(user.email ?? user.id);
         }
 
-        const [{ data: badgeRows, error: badgeError }, { data: certificateRows, error: certificateError }] =
-          await Promise.all([
-            supabase
-              .from('user_badges')
-              .select('id, unlocked_at, badge:badges(id, slug, title, description)')
-              .eq('user_id', user.id)
-              .order('unlocked_at', { ascending: false }),
-            supabase
-              .from('certificates')
-              .select('id, created_at, image_path, mission:missions(id, slug, title, color)')
-              .eq('user_id', user.id)
-              .order('created_at', { ascending: false })
-          ]);
+        const [
+          { data: badgeRows, error: badgeError },
+          { data: certificateRows, error: certificateError }
+        ] = await Promise.all([
+          supabase
+            .from('user_badges')
+            .select('id, unlocked_at, badge:badges(id, slug, title, description)')
+            .eq('user_id', user.id)
+            .order('unlocked_at', { ascending: false })
+            .returns<BadgeRecord[]>(),
+          supabase
+            .from('certificates')
+            .select('id, created_at, image_path, mission:missions(id, slug, title, color)')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .returns<CertificateRecord[]>()
+        ]);
 
         if (badgeError) throw badgeError;
         if (certificateError) throw certificateError;
