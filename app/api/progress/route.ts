@@ -1,103 +1,87 @@
+// app/api/progress/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSupabaseRouteHandlerClient, createSupabaseServiceRoleClient } from '@/lib/supabase-server';
+import {
+  createSupabaseRouteHandlerClient,
+  createSupabaseServiceRoleClient,
+} from '@/lib/supabase-server';
 import type { ProgressResponse } from '@/lib/types';
-
-// 追加：missions の行の型
-type MissionRow = { id: string; slug: string; title?: string | null };
-type VisitRow = { place_id: string };
-
 
 export const runtime = 'nodejs';
 
+// 型（返り値の最低限だけ）
+type MissionRow = { id: string; slug: string; title?: string | null };
+type VisitRow = { place_id: string };
+
 const bodySchema = z.object({
-  missionSlugs: z.array(z.string()).min(1)
+  missionSlugs: z.array(z.string()).min(1),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const json = await request.json();
-    const { missionSlugs } = bodySchema.parse(json);
+    // 入力
+    const { missionSlugs } = bodySchema.parse(await request.json());
 
+    // 認証（ユーザー）
     const supabase = createSupabaseRouteHandlerClient();
     const {
-      data: { user }
+      data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-   const { data: missionRows, error: missionsErr } = await supabase
-  .from('missions')
-  .select('id, slug')          // title も要るなら 'id, slug, title'
-  .in('slug', missionSlugs)
-  .returns<MissionRow[]>();    // ★ 型を注入
+    // missions をスラッグから取得（型付き）
+    const { data: missionRows, error: missionsErr } = await supabase
+      .from('missions')
+      .select('id, slug') // titleも要るなら 'id, slug, title'
+      .in('slug', missionSlugs)
+      .returns<MissionRow[]>();
+    if (missionsErr) throw missionsErr;
 
-if (missionsErr) {
-  throw missionsErr;
-}
-
-const missionIds = missionRows?.map((m) => m.id) ?? [];
-
+    const missionIds = (missionRows ?? []).map((m) => m.id);
     if (missionIds.length === 0) {
       const empty: ProgressResponse = { byMission: {}, visitedAllPlaceIds: [] };
       return NextResponse.json(empty);
     }
 
-    const service = createSupabaseServiceRoleClient();
+    // 結果格納用
+    const missionMap = new Map<string, { missionId: string; placeIds: Set<string> }>();
+    const missionIdToSlug = new Map<string, string>();
+    for (const m of missionRows) {
+      missionMap.set(m.slug, { missionId: m.id, placeIds: new Set() });
+      missionIdToSlug.set(m.id, m.slug);
+    }
 
-    const { data: missionPlaces, error: placesError } = await service
+    // mission_places（対象ミッションの全スポット）
+    const service = createSupabaseServiceRoleClient();
+    const { data: missionPlaces, error: placesErr } = await service
       .from('mission_places')
       .select('mission_id, place_id')
       .in('mission_id', missionIds);
-    if (placesError) {
-      throw placesError;
-    }
-
-    const { data: visits, error: visitsError } = await service
-      .from('visits')
-      .select('place_id')
-      .eq('user_id', user.id);
-    if (visitsError) {
-      throw visitsError;
-    }
-
- // ★ visits の取得（型を注入して never を回避）
-const { data: visits, error: visitsErr } = await supabase
-  .from('visits')
-  .select('place_id')
-  // もしユーザー別やミッション別で絞るなら .eq / .in をここに追加
-  // .eq('user_id', user.id)
-  // .in('mission_id', missionIds)
-  .returns<VisitRow[]>(); // ← これがポイント
-
-if (visitsErr) {
-  throw visitsErr;
-}
-
-const visitedPlaceSet = new Set<string>();
-for (const visit of visits ?? []) {
-  if (visit.place_id) {
-    visitedPlaceSet.add(visit.place_id);
-  }
-}
-
-
-    const missionMap = new Map<string, { missionId: string; placeIds: Set<string> }>();
-    const missionIdToSlug = new Map<string, string>();
-    for (const mission of missionRows ?? []) {
-      missionMap.set(mission.slug, { missionId: mission.id, placeIds: new Set() });
-      missionIdToSlug.set(mission.id, mission.slug);
-    }
+    if (placesErr) throw placesErr;
 
     for (const row of missionPlaces ?? []) {
       if (!row.mission_id || !row.place_id) continue;
       const slug = missionIdToSlug.get(row.mission_id);
       if (!slug) continue;
-      const entry = missionMap.get(slug);
-      entry?.placeIds.add(row.place_id);
+      missionMap.get(slug)?.placeIds.add(row.place_id);
     }
 
+    // このユーザーの訪問実績（RLS尊重で routeHandler client を使う）
+    const { data: visits, error: visitsErr } = await supabase
+      .from('visits')
+      .select('place_id')
+      .eq('user_id', user.id)
+      .returns<VisitRow[]>();
+    if (visitsErr) throw visitsErr;
+
+    const visitedPlaceSet = new Set<string>();
+    for (const v of visits ?? []) {
+      if (v.place_id) visitedPlaceSet.add(v.place_id);
+    }
+
+    // 集計
     const byMission: ProgressResponse['byMission'] = {};
     const visitedAllPlaceIds: string[] = [];
 
@@ -105,6 +89,7 @@ for (const visit of visits ?? []) {
       const total = placeIds.size;
       let completed = 0;
       const visitedPlaceIds: string[] = [];
+
       placeIds.forEach((placeId) => {
         if (visitedPlaceSet.has(placeId)) {
           completed += 1;
@@ -114,18 +99,15 @@ for (const visit of visits ?? []) {
           }
         }
       });
+
       byMission[slug] = { total, completed, visitedPlaceIds };
     }
 
-    const response: ProgressResponse = {
-      byMission,
-      visitedAllPlaceIds
-    };
-
+    const response: ProgressResponse = { byMission, visitedAllPlaceIds };
     return NextResponse.json(response);
-  } catch (error) {
-    console.error(error);
-    if (error instanceof z.ZodError) {
+  } catch (err) {
+    console.error(err);
+    if (err instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
     return NextResponse.json({ error: 'Failed to compute progress' }, { status: 500 });
