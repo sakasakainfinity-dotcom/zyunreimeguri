@@ -9,8 +9,9 @@ import type { ProgressResponse } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
-// 型（返り値の最低限だけ）
+// ===== 型（最低限） =====
 type MissionRow = { id: string; slug: string; title?: string | null };
+type MissionPlaceRow = { mission_id: string; place_id: string };
 type VisitRow = { place_id: string };
 
 const bodySchema = z.object({
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(empty);
     }
 
-    // 結果格納用
+    // 結果格納用マップ
     const missionMap = new Map<string, { missionId: string; placeIds: Set<string> }>();
     const missionIdToSlug = new Map<string, string>();
     for (const m of missionRows) {
@@ -53,12 +54,13 @@ export async function POST(request: NextRequest) {
       missionIdToSlug.set(m.id, m.slug);
     }
 
-    // mission_places（対象ミッションの全スポット）
+    // mission_places（対象ミッションの全スポット）— 型付きで取得
     const service = createSupabaseServiceRoleClient();
     const { data: missionPlaces, error: placesErr } = await service
       .from('mission_places')
       .select('mission_id, place_id')
-      .in('mission_id', missionIds);
+      .in('mission_id', missionIds)
+      .returns<MissionPlaceRow[]>();
     if (placesErr) throw placesErr;
 
     for (const row of missionPlaces ?? []) {
