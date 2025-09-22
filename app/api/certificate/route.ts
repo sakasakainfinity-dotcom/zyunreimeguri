@@ -1,9 +1,80 @@
+// app/api/certificate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   createSupabaseRouteHandlerClient,
   createSupabaseServiceRoleClient,
 } from '@/lib/supabase-server';
+
+export const runtime = 'nodejs'; // Edgeでは動かさん
+
+// ★ これが消えとった：Zodでリクエストの型チェック
+const schema = z.object({
+  mission_id: z.string().min(1),
+});
+
+// DBの型（必要部分だけ）
+type MissionRow = { id: string; title: string };
+
+async function generateCertificateImage(opts: {
+  missionTitle: string;
+  userLabel: string;
+}): Promise<Uint8Array> {
+  // バイナリ(.node)をビルドに混ぜない：遅延import + webpackIgnore
+  const { createCanvas, GlobalFonts } = await import(
+    /* webpackIgnore: true */ '@napi-rs/canvas'
+  );
+
+  // フォント（無くても動くよう try/catch）
+  if (!GlobalFonts.has('Noto Sans JP')) {
+    try {
+      GlobalFonts.registerFromPath(
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+        'Noto Sans JP',
+      );
+    } catch (err) {
+      console.warn('フォントの登録に失敗しました', err);
+    }
+  }
+
+  const width = 1400;
+  const height = 1000;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  // 背景
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, width, height);
+
+  // 枠
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = '#1e40af';
+  ctx.strokeRect(80, 80, width - 160, height - 160);
+
+  // タイトル
+  ctx.fillStyle = '#1e3a8a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 72px "Noto Sans JP", sans-serif';
+  ctx.fillText('巡礼達成証', width / 2, 220);
+
+  // ミッション名
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '48px "Noto Sans JP", sans-serif';
+  ctx.fillText(opts.missionTitle, width / 2, 360);
+
+  // ユーザー／日付
+  ctx.font = '32px "Noto Sans JP", sans-serif';
+  ctx.fillText(opts.userLabel, width / 2, 470);
+  ctx.fillText(`達成日: ${new Date().toLocaleDateString('ja-JP')}`, width / 2, 540);
+
+  // メッセージ
+  ctx.font = '24px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#475569';
+  ctx.fillText('巡礼マップがあなたの挑戦を称えます。引き続き素敵な巡礼を！', width / 2, 660);
+
+  return await canvas.encode('png');
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,10 +90,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 型（ミッション行）
-    type MissionRow = { id: string; title: string };
-
-    // ミッション取得（型付き single）
+    // ミッション取得（型付き）
     const { data: mission, error: missionError } = await supabase
       .from('missions')
       .select('id, title')
@@ -33,10 +101,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
     }
 
-    // ★ ここで1回だけ宣言
+    // userLabel は1回だけ
     const userLabel = `巡礼者: ${user.email ?? user.id}`;
 
-    // 証明書画像生成
+    // 画像生成
     const pngBytes = await generateCertificateImage({
       missionTitle: mission.title,
       userLabel,
