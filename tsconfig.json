@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "es2019",            // ← ここを変更
     "lib": [
       "dom",
       "dom.iterable",
@@ -45,3 +45,4 @@
     "node_modules"
   ]
 }
+
