@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { createSupabaseRouteHandlerClient, createSupabaseServiceRoleClient } from '@/lib/supabase-server';
 import type { ProgressResponse } from '@/lib/types';
 
+// 追加：missions の行の型
+type MissionRow = { id: string; slug: string; title?: string | null };
+
+
 export const runtime = 'nodejs';
 
 const bodySchema = z.object({
@@ -22,15 +26,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: missionRows, error: missionError } = await supabase
-      .from('missions')
-      .select('id, slug, title')
-      .in('slug', missionSlugs);
-    if (missionError) {
-      throw missionError;
-    }
+   const { data: missionRows, error: missionsErr } = await supabase
+  .from('missions')
+  .select('id, slug')          // title も要るなら 'id, slug, title'
+  .in('slug', missionSlugs)
+  .returns<MissionRow[]>();    // ★ 型を注入
 
-    const missionIds = missionRows?.map((mission) => mission.id) ?? [];
+if (missionsErr) {
+  throw missionsErr;
+}
+
+const missionIds = missionRows?.map((m) => m.id) ?? [];
+
     if (missionIds.length === 0) {
       const empty: ProgressResponse = { byMission: {}, visitedAllPlaceIds: [] };
       return NextResponse.json(empty);
