@@ -17,13 +17,14 @@ const { createCanvas, GlobalFonts } = await import(
   /* webpackIgnore: true */ '@napi-rs/canvas'
 );
 
-  if (GlobalFonts.get('Noto Sans JP') === undefined) {
-    try {
-      GlobalFonts.registerFromPath('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans JP');
-    } catch (error) {
-      console.warn('フォントの登録に失敗しました', error);
-    }
+if (!GlobalFonts.has('Noto Sans JP')) {
+  try {
+    GlobalFonts.registerFromPath('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans JP');
+  } catch (error) {
+    console.warn('フォントの登録に失敗しました', error);
   }
+}
+
   const width = 1400;
   const height = 1000;
   const canvas = createCanvas(width, height);
