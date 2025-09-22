@@ -1,4 +1,3 @@
-// app/api/certificate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
@@ -6,22 +5,24 @@ import {
   createSupabaseServiceRoleClient,
 } from '@/lib/supabase-server';
 
-export const runtime = 'nodejs'; // Edgeじゃ動かん。Nodeで実行
+export const runtime = 'nodejs';
 
 const schema = z.object({
   mission_id: z.string().min(1),
 });
 
+type MissionRow = { id: string; title: string };
+
 async function generateCertificateImage(opts: {
   missionTitle: string;
   userLabel: string;
 }): Promise<Uint8Array> {
-  // ここが超重要：ビルド時に .node を抱え込ませない
+  // バイナリ(.node)をバンドルさせない
   const { createCanvas, GlobalFonts } = await import(
     /* webpackIgnore: true */ '@napi-rs/canvas'
   );
 
-  // フォント登録（無くても動くよう try/catch）
+  // フォント（無ければスキップ）
   if (!GlobalFonts.has('Noto Sans JP')) {
     try {
       GlobalFonts.registerFromPath(
@@ -64,21 +65,20 @@ async function generateCertificateImage(opts: {
   ctx.fillText(opts.userLabel, width / 2, 470);
   ctx.fillText(`達成日: ${new Date().toLocaleDateString('ja-JP')}`, width / 2, 540);
 
-  // ひと言
+  // メッセージ
   ctx.font = '24px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#475569';
   ctx.fillText('巡礼マップがあなたの挑戦を称えます。引き続き素敵な巡礼を！', width / 2, 660);
 
-  // PNG のバイト列（Uint8Array）
   return await canvas.encode('png');
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // 入力チェック
+    // 入力
     const { mission_id: missionId } = schema.parse(await request.json());
 
-    // 認証（ユーザー取得）
+    // 認証
     const supabase = createSupabaseRouteHandlerClient();
     const {
       data: { user },
@@ -87,32 +87,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-  // ★ 追加：型を上に書く
-type MissionRow = { id: string; title: string };
+    // ミッション取得（型つける）
+    const { data: mission, error: missionError } = await supabase
+      .from('missions')
+      .select('id, title')
+      .eq('id', missionId)
+      .single<MissionRow>();
 
-const { data: mission, error: missionError } = await supabase
-  .from('missions')
-  .select('id, title')
-  .eq('id', missionId)
-  .single<MissionRow>();
+    if (missionError || !mission) {
+      return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
+    }
 
-if (missionError || !mission) {
-  return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
-}
-
-const userLabel = `巡礼者: ${user.email ?? user.id}`;
-const pngBuffer = await generateCertificateImage({
-  missionTitle: mission.title,
-  userLabel,
-});
-
+    // ★ userLabel はここで1回だけ
     const userLabel = `巡礼者: ${user.email ?? user.id}`;
+
+    // 画像生成
     const pngBytes = await generateCertificateImage({
       missionTitle: mission.title,
       userLabel,
     });
 
-    // サービスロールで保存（Storage）
+    // 保存（Storage）
     const service = createSupabaseServiceRoleClient();
     const path = `certificates/${user.id}/${missionId}-${Date.now()}.png`;
 
@@ -124,7 +119,7 @@ const pngBuffer = await generateCertificateImage({
       });
     if (uploadError) throw uploadError;
 
-    // DB にメタ登録（使ってるなら）
+    // メタ保存（任意）
     const { data: inserted, error: insertError } = await service
       .from('certificates')
       .insert({
@@ -136,7 +131,7 @@ const pngBuffer = await generateCertificateImage({
       .single();
     if (insertError) throw insertError;
 
-    // 署名 URL（1 週間）
+    // 署名URL（1週間）
     const { data: signed, error: signedError } = await service.storage
       .from('certificates')
       .createSignedUrl(inserted.image_path, 60 * 60 * 24 * 7);
