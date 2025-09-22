@@ -5,6 +5,7 @@ import type { ProgressResponse } from '@/lib/types';
 
 // 追加：missions の行の型
 type MissionRow = { id: string; slug: string; title?: string | null };
+type VisitRow = { place_id: string };
 
 
 export const runtime = 'nodejs';
@@ -61,12 +62,26 @@ const missionIds = missionRows?.map((m) => m.id) ?? [];
       throw visitsError;
     }
 
-    const visitedPlaceSet = new Set<string>();
-    for (const visit of visits ?? []) {
-      if (visit.place_id) {
-        visitedPlaceSet.add(visit.place_id);
-      }
-    }
+ // ★ visits の取得（型を注入して never を回避）
+const { data: visits, error: visitsErr } = await supabase
+  .from('visits')
+  .select('place_id')
+  // もしユーザー別やミッション別で絞るなら .eq / .in をここに追加
+  // .eq('user_id', user.id)
+  // .in('mission_id', missionIds)
+  .returns<VisitRow[]>(); // ← これがポイント
+
+if (visitsErr) {
+  throw visitsErr;
+}
+
+const visitedPlaceSet = new Set<string>();
+for (const visit of visits ?? []) {
+  if (visit.place_id) {
+    visitedPlaceSet.add(visit.place_id);
+  }
+}
+
 
     const missionMap = new Map<string, { missionId: string; placeIds: Set<string> }>();
     const missionIdToSlug = new Map<string, string>();
