@@ -1,16 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // ← ここが肝。ネイティブバイナリを外部扱いにする
+    // ネイティブバイナリをサーバー外部扱いにする（保険）
     serverComponentsExternalPackages: ['@napi-rs/canvas'],
   },
   webpack: (config) => {
-    // 予防線：バンドル対象から外す（念のため）
+    // 念のためバンドルから除外
     config.externals = config.externals || [];
     config.externals.push('@napi-rs/canvas');
     return config;
   },
 };
 
-// ESM なので export default
 export default nextConfig;
