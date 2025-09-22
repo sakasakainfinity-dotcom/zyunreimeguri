@@ -1,0 +1,70 @@
+.leaflet-div-icon {
+  background: transparent;
+  border: none;
+}
+
+.mission-pin {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #1f2933;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mission-pin__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid currentColor;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+.mission-pin__core {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.mission-pin--visited .mission-pin__core {
+  background: #fef08a;
+}
+
+.mission-pin__label {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.mission-pin--hanamaru::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 999px;
+  border: 3px solid rgba(239, 68, 68, 0.8);
+  animation: hanamaru-pulse 1.6s infinite;
+}
+
+@keyframes hanamaru-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(1.15);
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
